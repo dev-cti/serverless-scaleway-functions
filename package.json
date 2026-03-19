@@ -58,7 +58,8 @@
     "axios": "^1.4.0",
     "bluebird": "^3.7.2",
     "dockerode": "^4.0.6",
-    "js-yaml": "^4.1.0"
+    "js-yaml": "^4.1.0",
+    "node-dockerignore": "^0.0.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.27.0",

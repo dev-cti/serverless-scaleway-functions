@@ -2,7 +2,8 @@
 
 const Docker = require("dockerode");
 const path = require("path");
-const fs = require("fs");
+const fs = require('fs');
+const dockerIgnore = require('node-dockerignore');
 
 const docker = new Docker();
 
@@ -49,9 +50,22 @@ function getFilesInBuildContextDirectory(directory) {
   let files = [];
 
   try {
-    const dirents = fs.readdirSync(directory, { withFileTypes: true });
+    const dockerIgnoreFilePath = path.join(directory, '.dockerignore');
+    let ignoreFiles = dockerIgnore();
+    if (fs.existsSync(dockerIgnoreFilePath)) {
+      const lines = fs.readFileSync(dockerIgnoreFilePath, 'utf-8')
+        .split('\n')
+        .filter(Boolean);
+      ignoreFiles = ignoreFiles.add(lines);
+    }
+    ignoreFiles = ignoreFiles.add(".dockerignore")
 
+    const dirents = fs.readdirSync(directory, { withFileTypes: true });
     dirents.forEach((dirent) => {
+      if (ignoreFiles.ignores(dirent.name)) {
+        return;
+      }
+
       const absolutePath = path.join(directory, dirent.name);
       if (dirent.isDirectory()) {
         const subFiles = getFilesInBuildContextDirectory(absolutePath);
@@ -61,7 +75,7 @@ function getFilesInBuildContextDirectory(directory) {
           path.join(dirent.name, subFile)
         );
         files = files.concat(relativeSubFiles);
-      } else if (dirent.isFile() && dirent.name !== ".dockerignore") {
+      } else if (dirent.isFile()) {
         // Don't include .dockerignore file in result
         files.push(dirent.name);
       }
@@ -95,7 +109,7 @@ async function buildAndPushContainer(
   authConfig,
   containerConfig
 ) {
-  const { name, directory, buildArgs } = containerConfig;
+  const { name, directory, file, buildArgs } = containerConfig;
   const imageName = `${this.namespace.registry_endpoint}/${name}:latest`;
 
   this.serverless.cli.log(
@@ -110,6 +124,13 @@ async function buildAndPushContainer(
   if (buildArgs !== undefined) {
     buildOptions.buildargs = buildArgs;
   }
+
+  // Get Dockerfile path
+  const dockerFileDir = path.relative(directory, './')
+  buildOptions.dockerfile = path.join(dockerFileDir, file === undefined ? 'Dockerfile' : file);
+
+  // Enable buildkit
+  buildOptions.version = 2
 
   const buildStream = await docker.buildImage(
     {
